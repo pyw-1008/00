@@ -2,6 +2,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from contextlib import closing
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import html
 import json
 import os
 import re
@@ -20,6 +21,9 @@ DEFAULT_OPTIONS = ["喜爱一个人吃饭", "喜爱和对象两个人吃饭", "�
 MESSAGE_MAX_LENGTH = 50
 MESSAGE_FETCH_LIMIT = 50
 AUDIENCE_POLL_INTERVAL_MS = 1500
+QR_VERSION_4_SIZE = 33
+QR_VERSION_4_DATA_CODEWORDS = 80
+QR_VERSION_4_EC_CODEWORDS = 20
 
 
 def load_dotenv():
@@ -450,6 +454,242 @@ def get_latest_message_id():
     return row["latest_id"]
 
 
+def make_audience_url(host):
+    return f"http://{host}/audience"
+
+
+def make_qr_svg(text):
+    modules = make_qr_modules(text)
+    quiet_zone = 4
+    size = len(modules)
+    view_size = size + quiet_zone * 2
+    rects = []
+
+    for y, row in enumerate(modules):
+        for x, dark in enumerate(row):
+            if dark:
+                rects.append(
+                    f'<rect x="{x + quiet_zone}" y="{y + quiet_zone}" width="1" height="1"/>'
+                )
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {view_size} {view_size}" '
+        f'role="img" aria-label="观众页二维码">'
+        f'<title>{html.escape(text)}</title>'
+        f'<rect width="100%" height="100%" fill="#fff"/>'
+        f'<g fill="#000">{"".join(rects)}</g>'
+        f'</svg>'
+    )
+
+
+def make_qr_modules(text):
+    data_bytes = text.encode("utf-8")
+    if len(data_bytes) > 78:
+        raise ValueError("二维码内容过长")
+
+    data_codewords = make_qr_data_codewords(data_bytes)
+    ec_codewords = make_qr_error_correction(data_codewords, QR_VERSION_4_EC_CODEWORDS)
+    all_codewords = data_codewords + ec_codewords
+    size = QR_VERSION_4_SIZE
+    matrix = [[False for _ in range(size)] for _ in range(size)]
+    reserved = [[False for _ in range(size)] for _ in range(size)]
+
+    def set_module(x, y, dark, is_reserved=True):
+        if x < 0 or y < 0 or x >= size or y >= size:
+            return
+        matrix[y][x] = dark
+        if is_reserved:
+            reserved[y][x] = True
+
+    draw_qr_finder(matrix, reserved, 0, 0)
+    draw_qr_finder(matrix, reserved, size - 7, 0)
+    draw_qr_finder(matrix, reserved, 0, size - 7)
+    draw_qr_alignment(set_module, 26, 26)
+    draw_qr_timing(set_module, reserved, size)
+    reserve_qr_format_areas(set_module, size)
+    place_qr_format_bits(set_module, size)
+    set_module(8, size - 8, True)
+    place_qr_data_bits(matrix, reserved, all_codewords)
+
+    return matrix
+
+
+def make_qr_data_codewords(data_bytes):
+    bits = []
+    append_qr_bits(bits, 0b0100, 4)
+    append_qr_bits(bits, len(data_bytes), 8)
+    for byte in data_bytes:
+        append_qr_bits(bits, byte, 8)
+
+    remaining = QR_VERSION_4_DATA_CODEWORDS * 8 - len(bits)
+    append_qr_bits(bits, 0, min(4, remaining))
+    while len(bits) % 8 != 0:
+        bits.append(0)
+
+    codewords = []
+    for index in range(0, len(bits), 8):
+        value = 0
+        for bit in bits[index:index + 8]:
+            value = (value << 1) | bit
+        codewords.append(value)
+
+    pads = [0xEC, 0x11]
+    pad_index = 0
+    while len(codewords) < QR_VERSION_4_DATA_CODEWORDS:
+        codewords.append(pads[pad_index % len(pads)])
+        pad_index += 1
+
+    return codewords
+
+
+def append_qr_bits(bits, value, length):
+    for index in range(length - 1, -1, -1):
+        bits.append((value >> index) & 1)
+
+
+def make_qr_error_correction(data, degree):
+    generator = make_qr_generator(degree)
+    remainder = [0] * degree
+
+    for byte in data:
+        factor = byte ^ remainder.pop(0)
+        remainder.append(0)
+        for index in range(degree):
+            remainder[index] ^= qr_gf_multiply(generator[index + 1], factor)
+
+    return remainder
+
+
+def make_qr_generator(degree):
+    poly = [1]
+    for index in range(degree):
+        next_poly = [0] * (len(poly) + 1)
+        for coefficient_index, coefficient in enumerate(poly):
+            next_poly[coefficient_index] ^= coefficient
+            next_poly[coefficient_index + 1] ^= qr_gf_multiply(coefficient, qr_gf_exp(index))
+        poly = next_poly
+    return poly
+
+
+def make_qr_gf_tables():
+    exp = [0] * 512
+    log = [0] * 256
+    value = 1
+    for index in range(255):
+        exp[index] = value
+        log[value] = index
+        value <<= 1
+        if value & 0x100:
+            value ^= 0x11D
+    for index in range(255, 512):
+        exp[index] = exp[index - 255]
+    return exp, log
+
+
+QR_GF_EXP, QR_GF_LOG = make_qr_gf_tables()
+
+
+def qr_gf_exp(power):
+    return QR_GF_EXP[power]
+
+
+def qr_gf_multiply(a, b):
+    if a == 0 or b == 0:
+        return 0
+    return QR_GF_EXP[QR_GF_LOG[a] + QR_GF_LOG[b]]
+
+
+def draw_qr_finder(matrix, reserved, left, top):
+    size = len(matrix)
+    for y_offset in range(-1, 8):
+        for x_offset in range(-1, 8):
+            x = left + x_offset
+            y = top + y_offset
+            if x < 0 or y < 0 or x >= size or y >= size:
+                continue
+            in_core = 0 <= x_offset <= 6 and 0 <= y_offset <= 6
+            dark = in_core and (
+                x_offset in (0, 6)
+                or y_offset in (0, 6)
+                or (2 <= x_offset <= 4 and 2 <= y_offset <= 4)
+            )
+            matrix[y][x] = dark
+            reserved[y][x] = True
+
+
+def draw_qr_alignment(set_module, center_x, center_y):
+    for y_offset in range(-2, 3):
+        for x_offset in range(-2, 3):
+            distance = max(abs(x_offset), abs(y_offset))
+            set_module(center_x + x_offset, center_y + y_offset, distance != 1)
+
+
+def draw_qr_timing(set_module, reserved, size):
+    for index in range(8, size - 8):
+        if not reserved[6][index]:
+            set_module(index, 6, index % 2 == 0)
+        if not reserved[index][6]:
+            set_module(6, index, index % 2 == 0)
+
+
+def reserve_qr_format_areas(set_module, size):
+    for index in range(9):
+        if index != 6:
+            set_module(8, index, False)
+            set_module(index, 8, False)
+    for index in range(8):
+        set_module(size - 1 - index, 8, False)
+        set_module(8, size - 1 - index, False)
+
+
+def place_qr_format_bits(set_module, size):
+    format_bits = 0b111011111000100
+
+    def bit(index):
+        return ((format_bits >> index) & 1) == 1
+
+    for index in range(6):
+        set_module(8, index, bit(index))
+    set_module(8, 7, bit(6))
+    set_module(8, 8, bit(7))
+    set_module(7, 8, bit(8))
+    for index in range(9, 15):
+        set_module(14 - index, 8, bit(index))
+
+    for index in range(8):
+        set_module(size - 1 - index, 8, bit(index))
+    for index in range(8, 15):
+        set_module(8, size - 15 + index, bit(index))
+
+
+def place_qr_data_bits(matrix, reserved, codewords):
+    bits = []
+    for codeword in codewords:
+        append_qr_bits(bits, codeword, 8)
+
+    bit_index = 0
+    upward = True
+    size = len(matrix)
+
+    right = size - 1
+    while right >= 1:
+        if right == 6:
+            right -= 1
+        for vertical in range(size):
+            y = size - 1 - vertical if upward else vertical
+            for offset in range(2):
+                x = right - offset
+                if reserved[y][x]:
+                    continue
+                dark = bits[bit_index] == 1 if bit_index < len(bits) else False
+                bit_index += 1
+                if (x + y) % 2 == 0:
+                    dark = not dark
+                matrix[y][x] = dark
+        upward = not upward
+        right -= 2
+
+
 def write_and_read_test_row():
     marker = f"db-check-{int(time.time() * 1000)}"
     with closing(connect_db()) as conn:
@@ -519,6 +759,14 @@ class AppHandler(SimpleHTTPRequestHandler):
                         "latest_id": get_latest_message_id(),
                     }
                 )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if path == "/api/audience-qr.svg":
+            try:
+                audience_url = make_audience_url(self.headers.get("Host", "127.0.0.1:8000"))
+                self.send_text(make_qr_svg(audience_url), content_type="image/svg+xml; charset=utf-8")
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=500)
             return
@@ -644,12 +892,20 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_text(self, text, content_type="text/plain; charset=utf-8", status=200):
+        body = text.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
 
 def main():
     load_dotenv()
     init_db()
 
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
     admin_password = os.environ.get("ADMIN_PASSWORD")
 

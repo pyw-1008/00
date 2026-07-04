@@ -4,6 +4,7 @@ const titleElement = document.querySelector("#screenQuestionTitle");
 const totalVotesElement = document.querySelector("#totalVotes");
 const chartElement = document.querySelector("#chart");
 const barrageStage = document.querySelector("#barrageStage");
+const audienceUrlElement = document.querySelector("#audienceUrl");
 
 let lastMessageId = 0;
 let nextLaneIndex = 0;
@@ -82,6 +83,11 @@ function renderBarrage(body) {
   });
 }
 
+function renderAudienceUrl() {
+  audienceUrlElement.textContent = `${window.location.origin}/audience`;
+}
+
+renderAudienceUrl();
 fetchQuestion().catch((error) => {
   titleElement.textContent = "投票结果加载失败";
   totalVotesElement.textContent = error.message;
