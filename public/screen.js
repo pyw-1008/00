@@ -3,6 +3,10 @@ const POLL_INTERVAL_MS = 1500;
 const titleElement = document.querySelector("#screenQuestionTitle");
 const totalVotesElement = document.querySelector("#totalVotes");
 const chartElement = document.querySelector("#chart");
+const barrageStage = document.querySelector("#barrageStage");
+
+let lastMessageId = 0;
+let nextLaneIndex = 0;
 
 async function fetchQuestion() {
   const response = await fetch("/api/current-question");
@@ -43,12 +47,43 @@ function renderQuestion(question) {
   });
 }
 
+async function fetchMessages() {
+  const response = await fetch(`/api/messages?since_id=${lastMessageId}`);
+  const data = await response.json();
+  if (!data.ok) {
+    throw new Error(data.error || "留言加载失败");
+  }
+
+  data.messages.forEach((message) => {
+    lastMessageId = Math.max(lastMessageId, message.id);
+    renderBarrage(message.body);
+  });
+}
+
+function renderBarrage(body) {
+  const item = document.createElement("div");
+  const lane = nextLaneIndex % 4;
+  nextLaneIndex += 1;
+
+  item.className = "barrage-item";
+  item.textContent = body;
+  item.style.top = `${lane * 42 + 12}px`;
+  item.style.animationDuration = `${9 + lane}s`;
+
+  barrageStage.append(item);
+  item.addEventListener("animationend", () => {
+    item.remove();
+  });
+}
+
 fetchQuestion().catch((error) => {
   titleElement.textContent = "投票结果加载失败";
   totalVotesElement.textContent = error.message;
 });
+fetchMessages().catch(() => {});
 setInterval(() => {
   fetchQuestion().catch((error) => {
     totalVotesElement.textContent = error.message;
   });
+  fetchMessages().catch(() => {});
 }, POLL_INTERVAL_MS);

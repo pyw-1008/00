@@ -1,7 +1,7 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from contextlib import closing
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 import json
 import os
 import sqlite3
@@ -15,6 +15,8 @@ SCHEMA_PATH = BASE_DIR / "schema.sql"
 
 DEFAULT_QUESTION_TITLE = "你最倾向于哪个选项？"
 DEFAULT_OPTIONS = ["喜爱一个人吃饭", "喜爱和对象两个人吃饭", "喜爱和三五好友聚会", "喜爱在家和家人亲戚一起吃饭"]
+MESSAGE_MAX_LENGTH = 50
+MESSAGE_FETCH_LIMIT = 50
 
 
 def load_dotenv():
@@ -199,6 +201,56 @@ def record_vote(option_id):
     return get_current_question_payload()
 
 
+def record_message(body):
+    body = str(body or "").strip()
+    if not body:
+        raise ValueError("留言不能为空")
+    if len(body) > MESSAGE_MAX_LENGTH:
+        raise ValueError("留言最多 50 字")
+
+    with closing(connect_db()) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO messages (author_name, body, is_test)
+            VALUES (?, ?, 0)
+            """,
+            ("观众", body),
+        )
+        message_id = cursor.lastrowid
+        row = conn.execute(
+            """
+            SELECT id, body, created_at
+            FROM messages
+            WHERE id = ?
+            """,
+            (message_id,),
+        ).fetchone()
+        conn.commit()
+
+    return dict(row)
+
+
+def list_messages(since_id=0, limit=MESSAGE_FETCH_LIMIT):
+    try:
+        since_id = int(since_id)
+    except (TypeError, ValueError):
+        since_id = 0
+
+    with closing(connect_db()) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, body, created_at
+            FROM messages
+            WHERE is_test = 0 AND id > ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (since_id, limit),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
 def write_and_read_test_row():
     marker = f"db-check-{int(time.time() * 1000)}"
     with closing(connect_db()) as conn:
@@ -228,7 +280,8 @@ class AppHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
 
         if path == "/":
             self.redirect("/audience")
@@ -255,6 +308,16 @@ class AppHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, status=500)
             return
 
+        if path == "/api/messages":
+            try:
+                query = parse_qs(parsed_url.query)
+                since_id = query.get("since_id", [0])[0]
+                messages = list_messages(since_id=since_id)
+                self.send_json({"ok": True, "messages": messages})
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
         if path == "/api/db-check":
             try:
                 row = write_and_read_test_row()
@@ -273,6 +336,17 @@ class AppHandler(SimpleHTTPRequestHandler):
                 payload = self.read_json()
                 question = record_vote(payload.get("option_id"))
                 self.send_json({"ok": True, "question": question})
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if path == "/api/messages":
+            try:
+                payload = self.read_json()
+                message = record_message(payload.get("body"))
+                self.send_json({"ok": True, "message": message})
             except ValueError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
             except Exception as exc:

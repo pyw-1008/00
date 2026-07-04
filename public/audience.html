@@ -17,6 +17,17 @@
       </form>
       <p id="feedback" class="feedback" aria-live="polite"></p>
     </section>
+    <section class="message-panel">
+      <p class="eyebrow">一句话留言</p>
+      <form id="messageForm" class="message-form">
+        <textarea id="messageInput" maxlength="50" rows="3" placeholder="输入 50 字以内的留言"></textarea>
+        <div class="message-actions">
+          <span id="messageCount">0/50</span>
+          <button id="submitMessage" class="primary-button" type="submit">发送留言</button>
+        </div>
+      </form>
+      <p id="messageFeedback" class="feedback" aria-live="polite"></p>
+    </section>
   </main>
   <script src="/audience.js"></script>
 </body>

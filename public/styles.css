@@ -56,6 +56,11 @@ body {
   margin: 0 auto;
 }
 
+.message-panel {
+  width: min(100%, 420px);
+  margin: 28px auto 0;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   color: #14b8a6;
@@ -124,6 +129,38 @@ body {
   font-weight: 700;
 }
 
+.message-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.message-form textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #1f2937;
+  background: #ffffff;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.message-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.message-actions span {
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .page-screen {
   align-items: stretch;
   color: #f8fafc;
@@ -188,6 +225,41 @@ body {
   color: #e2e8f0;
 }
 
+.barrage-stage {
+  position: relative;
+  height: 184px;
+  margin-top: 34px;
+  overflow: hidden;
+  border-top: 1px solid #27313d;
+}
+
+.barrage-item {
+  position: absolute;
+  left: 100%;
+  max-width: 52vw;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 8px 18px;
+  color: #0f172a;
+  background: #f8fafc;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  font-size: 24px;
+  font-weight: 800;
+  animation-name: barrage-move;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes barrage-move {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(calc(-100vw - 120%));
+  }
+}
+
 @media (max-width: 760px) {
   .screen-main h1 {
     font-size: 34px;
@@ -200,5 +272,10 @@ body {
 
   .bar-value {
     text-align: left;
+  }
+
+  .barrage-item {
+    max-width: 78vw;
+    font-size: 18px;
   }
 }

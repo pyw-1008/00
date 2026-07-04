@@ -3,6 +3,15 @@ const optionsContainer = document.querySelector("#options");
 const voteForm = document.querySelector("#voteForm");
 const submitButton = document.querySelector("#submitVote");
 const feedback = document.querySelector("#feedback");
+const messageForm = document.querySelector("#messageForm");
+const messageInput = document.querySelector("#messageInput");
+const messageCount = document.querySelector("#messageCount");
+const submitMessageButton = document.querySelector("#submitMessage");
+const messageFeedback = document.querySelector("#messageFeedback");
+
+const MESSAGE_MAX_LENGTH = 50;
+const MESSAGE_COOLDOWN_MS = 3000;
+const LAST_MESSAGE_AT_KEY = "slice2:lastMessageAt";
 
 let currentQuestion = null;
 
@@ -73,6 +82,58 @@ voteForm.addEventListener("submit", async (event) => {
     feedback.textContent = error.message;
   } finally {
     submitButton.disabled = false;
+  }
+});
+
+messageInput.addEventListener("input", () => {
+  const length = messageInput.value.length;
+  messageCount.textContent = `${length}/${MESSAGE_MAX_LENGTH}`;
+  messageFeedback.textContent = "";
+});
+
+messageForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const body = messageInput.value.trim();
+  if (!body) {
+    messageFeedback.textContent = "请输入留言";
+    return;
+  }
+  if (body.length > MESSAGE_MAX_LENGTH) {
+    messageFeedback.textContent = "留言最多 50 字";
+    return;
+  }
+
+  const lastMessageAt = Number(localStorage.getItem(LAST_MESSAGE_AT_KEY) || 0);
+  const remainingMs = MESSAGE_COOLDOWN_MS - (Date.now() - lastMessageAt);
+  if (remainingMs > 0) {
+    messageFeedback.textContent = `发送太快了，请 ${Math.ceil(remainingMs / 1000)} 秒后再试`;
+    return;
+  }
+
+  submitMessageButton.disabled = true;
+  messageFeedback.textContent = "正在发送...";
+
+  try {
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ body }),
+    });
+    const data = await response.json();
+    if (!data.ok) {
+      throw new Error(data.error || "留言发送失败");
+    }
+    localStorage.setItem(LAST_MESSAGE_AT_KEY, String(Date.now()));
+    messageInput.value = "";
+    messageCount.textContent = `0/${MESSAGE_MAX_LENGTH}`;
+    messageFeedback.textContent = "已发送";
+  } catch (error) {
+    messageFeedback.textContent = error.message;
+  } finally {
+    submitMessageButton.disabled = false;
   }
 });
 
