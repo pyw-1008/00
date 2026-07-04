@@ -54,6 +54,12 @@ async function fetchMessages() {
     throw new Error(data.error || "留言加载失败");
   }
 
+  if (data.latest_id < lastMessageId) {
+    lastMessageId = data.latest_id;
+    nextLaneIndex = 0;
+    barrageStage.innerHTML = "";
+  }
+
   data.messages.forEach((message) => {
     lastMessageId = Math.max(lastMessageId, message.id);
     renderBarrage(message.body);

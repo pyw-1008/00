@@ -11,6 +11,7 @@ const messageFeedback = document.querySelector("#messageFeedback");
 
 const MESSAGE_MAX_LENGTH = 50;
 const MESSAGE_COOLDOWN_MS = 3000;
+const QUESTION_POLL_INTERVAL_MS = 1500;
 const LAST_MESSAGE_AT_KEY = "slice2:lastMessageAt";
 
 let currentQuestion = null;
@@ -26,6 +27,7 @@ async function fetchQuestion() {
 }
 
 function renderQuestion(question) {
+  const selectedOption = new FormData(voteForm).get("option");
   questionTitle.textContent = question.title;
   optionsContainer.innerHTML = "";
 
@@ -37,6 +39,7 @@ function renderQuestion(question) {
     input.type = "radio";
     input.name = "option";
     input.value = option.id;
+    input.checked = String(option.id) === selectedOption;
 
     const text = document.createElement("span");
     text.textContent = option.label;
@@ -141,3 +144,8 @@ fetchQuestion().catch((error) => {
   questionTitle.textContent = "题目加载失败";
   feedback.textContent = error.message;
 });
+setInterval(() => {
+  fetchQuestion().catch((error) => {
+    feedback.textContent = error.message;
+  });
+}, QUESTION_POLL_INTERVAL_MS);

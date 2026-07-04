@@ -56,6 +56,9 @@ function createHarness({ messageValue = "", lastMessageAt = 0, now = 10000 } = {
   const context = {
     console,
     Number,
+    setInterval() {
+      return 1;
+    },
     Date: {
       now: () => now,
     },

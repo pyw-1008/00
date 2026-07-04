@@ -7,9 +7,40 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="page page-admin">
-  <main class="placeholder">
-    <h1>主持人后台页</h1>
-    <p>暂无内容</p>
+  <main class="admin-shell">
+    <section id="loginPanel" class="admin-panel">
+      <p class="eyebrow">主持人后台</p>
+      <h1>输入后台密码</h1>
+      <form id="loginForm" class="admin-form">
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="后台密码">
+        <button class="primary-button" type="submit">进入后台</button>
+      </form>
+      <p id="loginFeedback" class="feedback" aria-live="polite"></p>
+    </section>
+
+    <section id="adminPanel" class="admin-panel admin-layout" hidden>
+      <div>
+        <p class="eyebrow">题目管理</p>
+        <h1>主持人后台</h1>
+        <div id="questionList" class="question-list"></div>
+      </div>
+
+      <form id="questionForm" class="admin-form editor-panel">
+        <input id="questionId" type="hidden">
+        <label>
+          <span>题目</span>
+          <input id="questionInput" type="text" placeholder="输入题目">
+        </label>
+        <div id="optionInputs" class="option-editor"></div>
+        <div class="admin-actions">
+          <button id="newQuestionButton" class="secondary-button" type="button">新建题目</button>
+          <button class="primary-button" type="submit">保存并设为当前题</button>
+          <button id="clearVotesButton" class="danger-button" type="button">清空当前票数</button>
+        </div>
+        <p id="adminFeedback" class="feedback" aria-live="polite"></p>
+      </form>
+    </section>
   </main>
+  <script src="/admin.js"></script>
 </body>
 </html>

@@ -19,6 +19,7 @@ DEFAULT_QUESTION_TITLE = "你最倾向于哪个选项？"
 DEFAULT_OPTIONS = ["喜爱一个人吃饭", "喜爱和对象两个人吃饭", "喜爱和三五好友聚会", "喜爱在家和家人亲戚一起吃饭"]
 MESSAGE_MAX_LENGTH = 50
 MESSAGE_FETCH_LIMIT = 50
+AUDIENCE_POLL_INTERVAL_MS = 1500
 
 
 def load_dotenv():
@@ -172,6 +173,157 @@ def get_current_question_payload():
     }
 
 
+def is_admin_password_valid(password):
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    return bool(admin_password) and password == admin_password
+
+
+def get_admin_questions_payload():
+    with closing(connect_db()) as conn:
+        question_rows = conn.execute(
+            """
+            SELECT id, title, status, created_at, updated_at
+            FROM questions
+            ORDER BY
+                CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+                updated_at DESC,
+                id DESC
+            """
+        ).fetchall()
+
+        questions = []
+        for question in question_rows:
+            option_rows = conn.execute(
+                """
+                SELECT id, label, sort_order
+                FROM question_options
+                WHERE question_id = ?
+                ORDER BY sort_order, id
+                """,
+                (question["id"],),
+            ).fetchall()
+            questions.append(
+                {
+                    "id": question["id"],
+                    "title": question["title"],
+                    "status": question["status"],
+                    "created_at": question["created_at"],
+                    "updated_at": question["updated_at"],
+                    "options": [dict(row) for row in option_rows],
+                }
+            )
+
+    return questions
+
+
+def normalize_question_payload(payload):
+    title = str(payload.get("title") or "").strip()
+    options = [
+        str(option).strip()
+        for option in payload.get("options", [])
+        if str(option).strip()
+    ]
+
+    if not title:
+        raise ValueError("题目不能为空")
+    if len(options) < 2 or len(options) > 6:
+        raise ValueError("选项数量必须是 2-6 个")
+
+    return title, options
+
+
+def save_admin_question(payload):
+    title, options = normalize_question_payload(payload)
+    question_id = payload.get("id")
+
+    with closing(connect_db()) as conn:
+        if question_id:
+            question_id = int(question_id)
+            existing = conn.execute(
+                "SELECT id FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+            if not existing:
+                raise ValueError("题目不存在")
+            conn.execute(
+                """
+                UPDATE questions
+                SET title = ?, description = '后台题目', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (title, question_id),
+            )
+            conn.execute("DELETE FROM votes WHERE question_id = ?", (question_id,))
+            conn.execute("DELETE FROM question_options WHERE question_id = ?", (question_id,))
+        else:
+            cursor = conn.execute(
+                """
+                INSERT INTO questions (title, description, status)
+                VALUES (?, '后台题目', 'draft')
+                """,
+                (title,),
+            )
+            question_id = cursor.lastrowid
+
+        conn.executemany(
+            """
+            INSERT INTO question_options (question_id, label, sort_order)
+            VALUES (?, ?, ?)
+            """,
+            [
+                (question_id, label, index)
+                for index, label in enumerate(options, start=1)
+            ],
+        )
+        activate_question_in_connection(conn, question_id)
+        conn.commit()
+
+    return get_current_question_payload()
+
+
+def activate_question_in_connection(conn, question_id):
+    existing = conn.execute(
+        "SELECT id FROM questions WHERE id = ?",
+        (question_id,),
+    ).fetchone()
+    if not existing:
+        raise ValueError("题目不存在")
+
+    conn.execute("UPDATE questions SET status = 'draft'")
+    conn.execute(
+        """
+        UPDATE questions
+        SET status = 'active', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (question_id,),
+    )
+    conn.execute("DELETE FROM votes WHERE question_id = ?", (question_id,))
+    clear_messages_in_connection(conn)
+
+
+def activate_admin_question(question_id):
+    with closing(connect_db()) as conn:
+        activate_question_in_connection(conn, int(question_id))
+        conn.commit()
+
+    return get_current_question_payload()
+
+
+def clear_current_votes():
+    with closing(connect_db()) as conn:
+        question = get_active_question(conn)
+        conn.execute("DELETE FROM votes WHERE question_id = ?", (question["id"],))
+        clear_messages_in_connection(conn)
+        conn.commit()
+
+    return get_current_question_payload()
+
+
+def clear_messages_in_connection(conn):
+    conn.execute("DELETE FROM messages WHERE is_test = 0")
+
+
 def record_vote(option_id):
     try:
         option_id = int(option_id)
@@ -286,6 +438,18 @@ def list_messages(since_id=0, limit=MESSAGE_FETCH_LIMIT):
     return [dict(row) for row in rows]
 
 
+def get_latest_message_id():
+    with closing(connect_db()) as conn:
+        row = conn.execute(
+            """
+            SELECT COALESCE(MAX(id), 0) AS latest_id
+            FROM messages
+            WHERE is_test = 0
+            """
+        ).fetchone()
+    return row["latest_id"]
+
+
 def write_and_read_test_row():
     marker = f"db-check-{int(time.time() * 1000)}"
     with closing(connect_db()) as conn:
@@ -348,7 +512,22 @@ class AppHandler(SimpleHTTPRequestHandler):
                 query = parse_qs(parsed_url.query)
                 since_id = query.get("since_id", [0])[0]
                 messages = list_messages(since_id=since_id)
-                self.send_json({"ok": True, "messages": messages})
+                self.send_json(
+                    {
+                        "ok": True,
+                        "messages": messages,
+                        "latest_id": get_latest_message_id(),
+                    }
+                )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if path == "/api/admin/questions":
+            if not self.require_admin():
+                return
+            try:
+                self.send_json({"ok": True, "questions": get_admin_questions_payload()})
             except Exception as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=500)
             return
@@ -365,6 +544,14 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+
+        if path == "/api/admin/login":
+            payload = self.read_json()
+            if is_admin_password_valid(payload.get("password")):
+                self.send_json({"ok": True})
+            else:
+                self.send_json({"ok": False, "error": "密码错误"}, status=401)
+            return
 
         if path == "/api/votes":
             try:
@@ -388,6 +575,42 @@ class AppHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, status=500)
             return
 
+        if path == "/api/admin/questions":
+            if not self.require_admin():
+                return
+            try:
+                payload = self.read_json()
+                question = save_admin_question(payload)
+                self.send_json({"ok": True, "question": question})
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if path == "/api/admin/activate":
+            if not self.require_admin():
+                return
+            try:
+                payload = self.read_json()
+                question = activate_admin_question(payload.get("id"))
+                self.send_json({"ok": True, "question": question})
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if path == "/api/admin/clear-votes":
+            if not self.require_admin():
+                return
+            try:
+                question = clear_current_votes()
+                self.send_json({"ok": True, "question": question})
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
         self.send_json({"ok": False, "error": "接口不存在"}, status=404)
 
     def serve_file(self, filename):
@@ -405,6 +628,13 @@ class AppHandler(SimpleHTTPRequestHandler):
         if not raw_body:
             return {}
         return json.loads(raw_body)
+
+    def require_admin(self):
+        password = self.headers.get("X-Admin-Password", "")
+        if is_admin_password_valid(password):
+            return True
+        self.send_json({"ok": False, "error": "未授权"}, status=401)
+        return False
 
     def send_json(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

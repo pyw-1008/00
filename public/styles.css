@@ -161,6 +161,128 @@ body {
   font-weight: 700;
 }
 
+.admin-shell {
+  width: min(100%, 1120px);
+}
+
+.admin-panel {
+  width: min(100%, 520px);
+  margin: 0 auto;
+}
+
+.admin-panel h1 {
+  margin: 0 0 18px;
+  line-height: 1.2;
+}
+
+.admin-layout {
+  width: min(100%, 1120px);
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.admin-form,
+.option-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-form label,
+.option-editor label {
+  display: grid;
+  gap: 6px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-form input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #1f2937;
+  background: #ffffff;
+  font: inherit;
+}
+
+.editor-panel {
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.question-list {
+  display: grid;
+  gap: 10px;
+}
+
+.question-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 8px;
+}
+
+.question-item {
+  min-height: 44px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: left;
+  color: #1f2937;
+  background: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.question-item.is-active {
+  border-color: #0f766e;
+  color: #0f766e;
+  background: #ecfdf5;
+}
+
+.admin-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 10px;
+}
+
+.secondary-button,
+.danger-button {
+  min-height: 50px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button {
+  border: 1px solid #d1d5db;
+  color: #374151;
+  background: #ffffff;
+}
+
+.danger-button {
+  border: 0;
+  color: #ffffff;
+  background: #b91c1c;
+}
+
+.compact-button {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.compact-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .page-screen {
   align-items: stretch;
   color: #f8fafc;
@@ -261,6 +383,18 @@ body {
 }
 
 @media (max-width: 760px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .question-row {
+    grid-template-columns: 1fr;
+  }
+
   .screen-main h1 {
     font-size: 34px;
   }
