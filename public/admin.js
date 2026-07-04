@@ -13,6 +13,7 @@ const questionInput = document.querySelector("#questionInput");
 const optionInputs = document.querySelector("#optionInputs");
 const newQuestionButton = document.querySelector("#newQuestionButton");
 const clearVotesButton = document.querySelector("#clearVotesButton");
+const exportCsvButton = document.querySelector("#exportCsvButton");
 const adminFeedback = document.querySelector("#adminFeedback");
 
 let adminPassword = sessionStorage.getItem(ADMIN_PASSWORD_KEY) || "";
@@ -168,6 +169,35 @@ async function activateQuestion(id) {
   }
 }
 
+async function exportCsv() {
+  const response = await fetch("/api/admin/export.csv", {
+    headers: {
+      "X-Admin-Password": adminPassword,
+    },
+  });
+  if (!response.ok) {
+    let message = "导出失败";
+    try {
+      const data = await response.json();
+      message = data.error || message;
+    } catch (error) {
+      message = response.statusText || message;
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const today = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `互动墙数据-${today}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   loginFeedback.textContent = "正在验证...";
@@ -206,6 +236,16 @@ clearVotesButton.addEventListener("click", async () => {
     await clearVotes();
     await loadQuestions();
     adminFeedback.textContent = "当前题票数已清空";
+  } catch (error) {
+    adminFeedback.textContent = error.message;
+  }
+});
+
+exportCsvButton.addEventListener("click", async () => {
+  adminFeedback.textContent = "正在导出...";
+  try {
+    await exportCsv();
+    adminFeedback.textContent = "CSV 已开始下载";
   } catch (error) {
     adminFeedback.textContent = error.message;
   }

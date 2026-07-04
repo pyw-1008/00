@@ -2,7 +2,9 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from contextlib import closing
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import csv
 import html
+import io
 import json
 import os
 import re
@@ -175,6 +177,97 @@ def get_current_question_payload():
         "total_votes": total_votes,
         "options": options,
     }
+
+
+def build_export_csv():
+    output = io.StringIO()
+    fieldnames = [
+        "类型",
+        "题目ID",
+        "题目",
+        "选项ID",
+        "选项",
+        "票数",
+        "总票数",
+        "百分比",
+        "留言ID",
+        "留言内容",
+        "留言时间",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+
+    with closing(connect_db()) as conn:
+        questions = conn.execute(
+            """
+            SELECT id, title
+            FROM questions
+            ORDER BY id
+            """
+        ).fetchall()
+
+        for question in questions:
+            options = conn.execute(
+                """
+                SELECT
+                    question_options.id,
+                    question_options.label,
+                    COUNT(votes.id) AS vote_count
+                FROM question_options
+                LEFT JOIN votes ON votes.option_id = question_options.id
+                WHERE question_options.question_id = ?
+                GROUP BY question_options.id, question_options.label, question_options.sort_order
+                ORDER BY question_options.sort_order, question_options.id
+                """,
+                (question["id"],),
+            ).fetchall()
+            total_votes = sum(option["vote_count"] for option in options)
+
+            for option in options:
+                percentage = round((option["vote_count"] / total_votes * 100), 1) if total_votes else 0
+                writer.writerow(
+                    {
+                        "类型": "票数",
+                        "题目ID": question["id"],
+                        "题目": question["title"],
+                        "选项ID": option["id"],
+                        "选项": option["label"],
+                        "票数": option["vote_count"],
+                        "总票数": total_votes,
+                        "百分比": percentage,
+                        "留言ID": "",
+                        "留言内容": "",
+                        "留言时间": "",
+                    }
+                )
+
+        messages = conn.execute(
+            """
+            SELECT id, body, created_at
+            FROM messages
+            WHERE is_test = 0
+            ORDER BY id
+            """
+        ).fetchall()
+
+        for message in messages:
+            writer.writerow(
+                {
+                    "类型": "留言",
+                    "题目ID": "",
+                    "题目": "",
+                    "选项ID": "",
+                    "选项": "",
+                    "票数": "",
+                    "总票数": "",
+                    "百分比": "",
+                    "留言ID": message["id"],
+                    "留言内容": message["body"],
+                    "留言时间": message["created_at"],
+                }
+            )
+
+    return "\ufeff" + output.getvalue()
 
 
 def is_admin_password_valid(password):
@@ -780,6 +873,21 @@ class AppHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(exc)}, status=500)
             return
 
+        if path == "/api/admin/export.csv":
+            if not self.require_admin():
+                return
+            try:
+                self.send_text(
+                    build_export_csv(),
+                    content_type="text/csv; charset=utf-8",
+                    extra_headers={
+                        "Content-Disposition": 'attachment; filename="interactive-wall-export.csv"'
+                    },
+                )
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
         if path == "/api/db-check":
             try:
                 row = write_and_read_test_row()
@@ -892,10 +1000,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_text(self, text, content_type="text/plain; charset=utf-8", status=200):
+    def send_text(self, text, content_type="text/plain; charset=utf-8", status=200, extra_headers=None):
         body = text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

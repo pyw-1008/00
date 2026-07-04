@@ -248,7 +248,7 @@ body {
 
 .admin-actions {
   display: grid;
-  grid-template-columns: 1fr 1.4fr 1fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
