@@ -129,7 +129,7 @@ messageForm.addEventListener("submit", async (event) => {
     localStorage.setItem(LAST_MESSAGE_AT_KEY, String(Date.now()));
     messageInput.value = "";
     messageCount.textContent = `0/${MESSAGE_MAX_LENGTH}`;
-    messageFeedback.textContent = "已发送";
+    messageFeedback.textContent = data.message.masked ? "已发送，敏感词已打码" : "已发送";
   } catch (error) {
     messageFeedback.textContent = error.message;
   } finally {

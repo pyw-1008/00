@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import json
 import os
+import re
 import sqlite3
 import time
 
@@ -12,6 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_DIR = BASE_DIR / "public"
 DB_PATH = BASE_DIR / "app.sqlite3"
 SCHEMA_PATH = BASE_DIR / "schema.sql"
+SENSITIVE_WORDS_PATH = BASE_DIR / "sensitive_words.txt"
 
 DEFAULT_QUESTION_TITLE = "你最倾向于哪个选项？"
 DEFAULT_OPTIONS = ["喜爱一个人吃饭", "喜爱和对象两个人吃饭", "喜爱和三五好友聚会", "喜爱在家和家人亲戚一起吃饭"]
@@ -208,13 +210,15 @@ def record_message(body):
     if len(body) > MESSAGE_MAX_LENGTH:
         raise ValueError("留言最多 50 字")
 
+    masked_body, is_masked = mask_sensitive_words(body)
+
     with closing(connect_db()) as conn:
         cursor = conn.execute(
             """
             INSERT INTO messages (author_name, body, is_test)
             VALUES (?, ?, 0)
             """,
-            ("观众", body),
+            ("观众", masked_body),
         )
         message_id = cursor.lastrowid
         row = conn.execute(
@@ -227,7 +231,38 @@ def record_message(body):
         ).fetchone()
         conn.commit()
 
-    return dict(row)
+    message = dict(row)
+    message["masked"] = is_masked
+    return message
+
+
+def load_sensitive_words():
+    if not SENSITIVE_WORDS_PATH.exists():
+        return []
+
+    words = []
+    for raw_line in SENSITIVE_WORDS_PATH.read_text(encoding="utf-8").splitlines():
+        word = raw_line.strip()
+        if word and not word.startswith("#"):
+            words.append(word)
+    return words
+
+
+def mask_sensitive_words(body):
+    masked_body = body
+    is_masked = False
+
+    for word in load_sensitive_words():
+        pattern = re.compile(re.escape(word), re.IGNORECASE)
+
+        def replacement(match):
+            nonlocal is_masked
+            is_masked = True
+            return "*" * len(match.group(0))
+
+        masked_body = pattern.sub(replacement, masked_body)
+
+    return masked_body, is_masked
 
 
 def list_messages(since_id=0, limit=MESSAGE_FETCH_LIMIT):
