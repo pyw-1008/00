@@ -7,9 +7,17 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="page page-mobile">
-  <main class="placeholder">
-    <h1>观众页</h1>
-    <p>暂无内容</p>
+  <main class="audience-shell">
+    <section class="vote-panel">
+      <p class="eyebrow">现场投票</p>
+      <h1 id="questionTitle">正在加载题目...</h1>
+      <form id="voteForm" class="option-list">
+        <div id="options" class="option-list"></div>
+        <button id="submitVote" class="primary-button" type="submit" disabled>提交投票</button>
+      </form>
+      <p id="feedback" class="feedback" aria-live="polite"></p>
+    </section>
   </main>
+  <script src="/audience.js"></script>
 </body>
 </html>

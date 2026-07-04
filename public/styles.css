@@ -45,3 +45,160 @@ body {
 .page-screen .placeholder h1 {
   font-size: 56px;
 }
+
+.audience-shell,
+.screen-shell {
+  width: min(100%, 1120px);
+}
+
+.vote-panel {
+  width: min(100%, 420px);
+  margin: 0 auto;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #14b8a6;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.vote-panel h1,
+.screen-main h1 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.vote-panel h1 {
+  font-size: 30px;
+}
+
+.option-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.option-card {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  min-height: 56px;
+  padding: 14px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.option-card input {
+  width: 18px;
+  height: 18px;
+}
+
+.option-card span {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.primary-button {
+  min-height: 50px;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #0f766e;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.feedback {
+  min-height: 24px;
+  margin: 16px 0 0;
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.page-screen {
+  align-items: stretch;
+  color: #f8fafc;
+  background: #101214;
+}
+
+.screen-shell {
+  display: block;
+  min-height: calc(100vh - 48px);
+}
+
+.screen-main {
+  align-self: center;
+}
+
+.screen-main h1 {
+  font-size: 52px;
+}
+
+.total-votes {
+  margin: 14px 0 30px;
+  color: #cbd5e1;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.bar-chart {
+  display: grid;
+  gap: 20px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) minmax(0, 1fr) 128px;
+  gap: 18px;
+  align-items: center;
+}
+
+.bar-label,
+.bar-value {
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.bar-track {
+  height: 42px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #26313d;
+}
+
+.bar-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 8px;
+  background: #22c55e;
+  transition: width 240ms ease;
+}
+
+.bar-value {
+  text-align: right;
+  color: #e2e8f0;
+}
+
+@media (max-width: 760px) {
+  .screen-main h1 {
+    font-size: 34px;
+  }
+
+  .bar-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .bar-value {
+    text-align: left;
+  }
+}
